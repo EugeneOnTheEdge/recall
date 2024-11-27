@@ -91,6 +91,27 @@ def delete_description(filename):
             if not line.startswith(filename):
                 f.write(line)
 
+def estimate_storage(max_snapshots):
+    """Estimate storage required based on screen resolution and snapshots."""
+    avg_file_size_kb = 700  # Assume 700KB per snapshot
+    total_size_kb = avg_file_size_kb * max_snapshots
+    total_size_mb = total_size_kb / 1024  # Convert to MB
+    return total_size_mb
+
+def estimate_length(snapshot_count, snapshot_interval):
+    total_length_seconds = snapshot_count * snapshot_interval
+    if total_length_seconds / (60.0 * 60.0 * 24.0) >= 1:
+        length = total_length_seconds / (60.0 * 60.0 * 24.0)
+        unit = 'days'
+    elif total_length_seconds / (60.0 * 60.0) >= 1:
+        length = total_length_seconds / (60.0 * 60.0)
+        unit = 'hours'
+    else:
+        length = total_length_seconds / 60.0
+        unit = 'minutes'
+
+    return [length, unit]
+
 def snapshot_timer():
     """Take snapshots every interval seconds until stopped, checking the latest settings."""
     while True:
@@ -127,40 +148,43 @@ with st.sidebar:
     st.write(f"Recall status: **{state_message}**")
 
     # Input box for maximum snapshots
+    max_snapshots_disabled = settings["is_running"]
     max_snapshots = st.number_input(
         "Max snapshots to keep:",
         min_value=1,
-        max_value=1000,
+        max_value=650000,
         value=settings["max_snapshots"],
         step=1,
+        disabled=max_snapshots_disabled
     )
 
-    if st.button("Save Settings"):
-        settings = read_settings()
-        settings["max_snapshots"] = max_snapshots
-        save_settings(settings)
-        st.write("Settings saved!")
+    # Estimated storage
+    estimated_storage = estimate_storage(max_snapshots)
+    st.write(f"**Estimated storage needed:** ~{estimated_storage:.2f} MB")
 
-    # Start/Stop buttons
-    if st.button("Start Snapshot Timer"):
-        settings = read_settings()
-        if not settings["is_running"]:
+    # Estimated length of snapshots stored
+    estimated_length = estimate_length(max_snapshots, snapshot_interval)
+    st.write(f"**Estimated snapshot duration:** ~{estimated_length[0]:.2f} {estimated_length[1]}")
+
+    # Single Start/Stop button
+    if settings["is_running"]:
+        if st.button("Stop Recall Service"):
+            settings["stop_flag"] = True
+            settings["is_running"] = False
+            save_settings(settings)
+            st.write("Recall service stopped.")
+            st.rerun()
+    else:
+        if st.button("Start Recall Service"):
             settings["stop_flag"] = False
             settings["is_running"] = True
+            settings["max_snapshots"] = max_snapshots
             save_settings(settings)
 
             # Start a new thread for snapshot timer
             threading.Thread(target=snapshot_timer, daemon=True).start()
-            st.write("Snapshot timer started!")
-
-    if st.button("Stop Snapshot Timer"):
-        settings = read_settings()
-        if settings["is_running"]:
-            settings["stop_flag"] = True
-            settings["is_running"] = False
-            save_settings(settings)
-            st.write("Snapshot timer stopped.")
-
+            st.write("Recall service started.")
+            st.rerun()
 
 # Search snapshots
 st.subheader("Search Snapshots")
@@ -178,7 +202,6 @@ if search_query:
     else:
         st.write("No matching snapshots found.")
 
-
 # Timeline viewer
 st.subheader("Snapshots Timeline")
 snapshot_files = sorted(descriptions.keys())
@@ -194,25 +217,24 @@ if snapshot_files:
     start_time = timestamps[0]
     end_time = timestamps[-1]
 
+    # Align the timestamps using custom HTML and CSS
+    st.markdown(
+        f"""
+            <div style="display: flex; justify-content: space-between;">
+                <span style="text-align: left;">{start_time.strftime('%B %d, %Y • %H:%M:%S')}</span>
+                <span style="text-align: right;">{end_time.strftime('%B %d, %Y • %H:%M:%S')}</span>
+            </div>
+            """,
+        unsafe_allow_html=True
+    )
+
     # Slider to select index
     selected_index = st.slider(
-        "Select a snapshot:",
+        "",
         min_value=0,
         max_value=len(timestamps) - 1,
         value=0,
         format="",
-    )
-
-
-    # Align the timestamps using custom HTML and CSS
-    st.markdown(
-        f"""
-        <div style="display: flex; justify-content: space-between; margin-top: -10px;">
-            <span style="text-align: left;">{start_time.strftime('%B %d, %Y • %H:%M:%S')}</span>
-            <span style="text-align: right;">{end_time.strftime('%B %d, %Y • %H:%M:%S')}</span>
-        </div>
-        """,
-        unsafe_allow_html=True
     )
 
     # Get the selected snapshot
