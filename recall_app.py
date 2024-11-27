@@ -9,14 +9,14 @@ import pytesseract
 import json
 
 # Snapshot directory
-snapshot_dir = "snapshots"
+snapshot_dir = "snapshots/"
 os.makedirs(snapshot_dir, exist_ok=True)
 
 # Snapshot interval in seconds
 snapshot_interval = 10
 
 # Settings file path
-settings_file = "settings.json"
+settings_file = snapshot_dir + "settings.json"
 
 # Initialize settings if not present
 default_settings = {
@@ -119,12 +119,12 @@ st.title("Recall")
 
 # Left panel for controls
 with st.sidebar:
-    st.header("Service Controls")
+    st.header("Settings")
 
     # Show service state
     settings = read_settings()
     state_message = "Running" if settings["is_running"] else "Stopped"
-    st.write(f"Service State: **{state_message}**")
+    st.write(f"Recall status: **{state_message}**")
 
     # Input box for maximum snapshots
     max_snapshots = st.number_input(
@@ -161,8 +161,6 @@ with st.sidebar:
             save_settings(settings)
             st.write("Snapshot timer stopped.")
 
-# Main app UI
-st.header("Snapshot Viewer")
 
 # Search snapshots
 st.subheader("Search Snapshots")
@@ -180,38 +178,50 @@ if search_query:
     else:
         st.write("No matching snapshots found.")
 
+
 # Timeline viewer
-st.subheader("Timeline Viewer")
+st.subheader("Snapshots Timeline")
 snapshot_files = sorted(descriptions.keys())
 
 if snapshot_files:
-    start_time = snapshot_files[0].replace("snapshot_", "").replace(".png", "")
-    end_time = snapshot_files[-1].replace("snapshot_", "").replace(".png", "")
+    # Extract timestamps for each snapshot
+    timestamps = [
+        datetime.strptime(f.replace("snapshot_", "").replace(".png", ""), "%Y-%m-%d_%H-%M-%S")
+        for f in snapshot_files
+    ]
 
-    start_time_formatted = datetime.strptime(start_time, "%Y-%m-%d_%H-%M-%S").strftime(
-        "%A, %B %d, %Y • %H:%M:%S"
-    )
-    end_time_formatted = datetime.strptime(end_time, "%Y-%m-%d_%H-%M-%S").strftime(
-        "%A, %B %d, %Y • %H:%M:%S"
-    )
+    # Get the first and last timestamps
+    start_time = timestamps[0]
+    end_time = timestamps[-1]
 
-    st.write(f"Timeline: {start_time_formatted} — {end_time_formatted}")
-
+    # Slider to select index
     selected_index = st.slider(
-        "Select a snapshot by timestamp:",
-        0,
-        len(snapshot_files) - 1,
-        step=1,
-        )
+        "Select a snapshot:",
+        min_value=0,
+        max_value=len(timestamps) - 1,
+        value=0,
+        format="",
+    )
+
+
+    # Align the timestamps using custom HTML and CSS
+    st.markdown(
+        f"""
+        <div style="display: flex; justify-content: space-between; margin-top: -10px;">
+            <span style="text-align: left;">{start_time.strftime('%B %d, %Y • %H:%M:%S')}</span>
+            <span style="text-align: right;">{end_time.strftime('%B %d, %Y • %H:%M:%S')}</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Get the selected snapshot
+    selected_time = timestamps[selected_index]
     selected_file = snapshot_files[selected_index]
     selected_path = os.path.join(snapshot_dir, selected_file)
+    formatted_date = selected_time.strftime("%A, %B %d, %Y • %H:%M:%S")
 
-    timestamp = datetime.strptime(
-        selected_file.replace("snapshot_", "").replace(".png", ""),
-        "%Y-%m-%d_%H-%M-%S",
-    )
-    formatted_date = timestamp.strftime("%A, %B %d, %Y • %H:%M:%S")
-
+    # Display selected snapshot
     st.image(selected_path, caption=f"Snapshot: {selected_file}\nDate: {formatted_date}")
 else:
     st.write("No snapshots available yet. Start the timer to capture snapshots.")
